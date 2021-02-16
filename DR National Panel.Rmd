@@ -1,0 +1,741 @@
+---
+title: "Online Coefficients for Programmatic Team"
+author: "Jim Hogan"
+date: "01/05/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r global_options, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      fig.pos = '!h')
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library_list <- c("tidyverse","zoo","lubridate","scales",  "DataExplorer","gridExtra",  "broom","sandwich","minpack.lm","itertools",  "devtools")
+
+for(library in library_list){
+  
+  if(!require(library, character.only = TRUE)){
+    install.packages(library, dependencies = TRUE)
+    require(library, character.only = TRUE )
+    
+  }
+}
+
+setwd("C:/Users/jhoganjr/Desktop/ConsMktg/Attribution/TNY Aggregated MTA/mta/R")
+source("../R/get_data.R")
+source("../R/plotting_functions.R")
+source("../R/adstocking.R")
+source("../R/formatting.R")
+source("../R/contribution.R")
+source("../R/budget_optimization.R")
+
+
+lg <- function(x) log(x + 1)
+
+
+setwd("C:/Users/jhoganjr/Desktop/ConsMktg/Attribution/TNY Aggregated MTA/mta/models")
+national_panel2 <- get_cleaned_panel_data('csv','2018-2019')
+```
+
+```{r Set Date, include=FALSE}
+last_day=2592
+#Date References Dec: 2530 Nov : 2500 # Oct 31 : 2469, Sep 30 : 2468, Aug 31 : 2438, July 31: 2407, June 30: 2376, May 31: 2346
+# April 30: 2315, March 31: 2285, Feb 29: 2254, Jan 31: 2225, Dec 31: 2194
+
+national_panel <- national_panel2
+national_panel <- national_panel %>% filter(timekey < last_day)
+national_panel <- national_panel %>% filter(timekey > (last_day-372))
+```
+
+```{r summary, echo=FALSE}
+total_mm <- sum(national_panel$derived_net_subs_trialists_mailed_responded_mail)
+total_o <- sum(national_panel$dash_net_subs)
+total_mo <- sum(national_panel$ns_dm_net_subs)
+total_other <- sum(national_panel$derived_net_subs_trialists_all_other_responded_mail)
+
+# Secondary
+total_fb_results <- sum(national_panel$facebook_results)
+total_ps_conversions <- sum(national_panel$paid_search_conversions)
+total_acq_email_subs <- sum(national_panel$acq_email_multi_net_subs_combined + national_panel$acq_email_multi_net_subs_nyr)
+
+total <- total_mm + total_o + total_mo + total_other
+
+response_props <- data.frame(`Percent`= c(
+  `Non-DM > Responded Online` = total_o / total * 100,
+  `DM > Responded Online` = total_mo / total * 100,
+  `DM > Responded Mail` = total_mm / total * 100,
+  `All Other` = total_other / total * 100
+))
+
+
+weekly_spends <- data.frame(`Weekly Spend`= c(
+  `Facebook and Programmatic` = mean(national_panel$facebook_and_prog) * 7,
+  `DM Promotion` = mean(national_panel$pbworx_dm_promo_hist_prom_ct) * 7 * 0.47,
+  `Paid Search` = mean(national_panel$uniform_paid_search_cost) * 7,
+  `Programmatic Spend`=mean(national_panel$programmatic_campaigns_spend)*7
+))
+
+knitr::kable(weekly_spends)
+```
+
+```{r Paid Search, warning=TRUE, include=FALSE}
+# national_panel <- national_panel %>% filter(programmatic_campaigns_spend > 0)
+# national_panel <- national_panel %>% filter(facebook_amount_spent>0)
+
+
+national_panel_trunc <- national_panel %>%  filter(newsletter_sends > 0) # remove dates were newsletter data is not available
+
+
+np_paid_search <- national_panel_trunc
+
+
+
+gift_params <- optimize_delayed_geom_adstock(np_paid_search, lg(np_paid_search$gift_xmas_cold_mail_volume),
+                                             lg(np_paid_search$smooth_paid_search_cost), delay = 21,
+                                             upper_span = 0.95, upper_rate = 0.95)
+
+acq_email_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$acq_email_multi_sends_nyr + np_paid_search$acq_email_multi_sends_combined) ,
+                                          lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.7)
+
+books_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_books) ,lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+business_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_business) ,lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+cartoons_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_cartoons) ,lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+crossword_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_crossword) ,lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+culture_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_culture) ,lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+humor_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_humor) ,lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+magazine_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_magazine),lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+news_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_news),lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+podcast_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_podcast),lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+recommends_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_recommends),lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+science_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_science),lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+sporting_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_sporting_scene),lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+tech_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_tech),lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+video_params <- optimize_geom_adstock(np_paid_search,lg(np_paid_search$posts_by_day_video),lg(np_paid_search$smooth_paid_search_cost), upper_rate = 0.9)
+
+np_paid_search <- np_paid_search %>% 
+  mutate(
+    adstock_xmas_cold_mail_volume = delayed_geom_adstock(gift_xmas_cold_mail_volume, gift_params["span"], 21, gift_params["rate"]),
+    adstock_dm_promo_hist_ct = delayed_geom_adstock(pbworx_external_names_only_prom_ct, 0.97, 12, 0.88),
+    adstock_dm_external_ct = delayed_geom_adstock(pbworx_external_names_only_prom_ct, 0.97, 12, 0.88),
+    adstock_acq_email_sent_total = geom_adstock(acq_email_multi_sends_nyr + acq_email_multi_sends_combined, acq_email_params["rate"]),
+    adstock_posts_by_day_books = geom_adstock(posts_by_day_books, books_params["rate"]),
+    adstock_posts_by_day_business = geom_adstock(posts_by_day_business, business_params["rate"]),
+    adstock_posts_by_day_cartoons = geom_adstock(posts_by_day_cartoons, cartoons_params["rate"]),
+    adstock_posts_by_day_crossword = geom_adstock(posts_by_day_crossword, crossword_params["rate"]),
+    adstock_posts_by_day_culture = geom_adstock(posts_by_day_culture, culture_params["rate"]),
+    adstock_posts_by_day_humor = geom_adstock(posts_by_day_humor, humor_params["rate"]),
+    adstock_posts_by_day_magazine = geom_adstock(posts_by_day_magazine, magazine_params["rate"]),
+    adstock_posts_by_day_news = geom_adstock(posts_by_day_news, news_params["rate"]),
+    adstock_posts_by_day_podcast = geom_adstock(posts_by_day_podcast, podcast_params["rate"]),
+    adstock_posts_by_day_recommends = geom_adstock(posts_by_day_recommends, recommends_params["rate"]),
+    adstock_posts_by_day_science = geom_adstock(posts_by_day_science, science_params["rate"]),
+    adstock_posts_by_day_sporting_scene = geom_adstock(posts_by_day_sporting_scene, sporting_params["rate"]),
+    adstock_posts_by_day_tech = geom_adstock(posts_by_day_tech, tech_params["rate"]),
+    adstock_posts_by_day_video = geom_adstock(posts_by_day_video, video_params["rate"])
+  )
+
+paid_search_model <- lm(lg(smooth_paid_search_cost) ~
+                          lg(adstock_xmas_cold_mail_volume) +
+                          lg(facebook_and_prog) +
+                          lg(ga_sub_status_active_pageviews) +
+                          lg(earned_index) +
+                          # lg(programmatic_campaigns_spend)+
+                          adstock_posts_by_day_business +
+                          adstock_posts_by_day_crossword +
+                          adstock_posts_by_day_culture +
+                          adstock_posts_by_day_humor +
+                          adstock_posts_by_day_magazine +
+                          adstock_posts_by_day_news +
+                          adstock_posts_by_day_sporting_scene +
+                          adstock_posts_by_day_tech +
+                          adstock_posts_by_day_video +
+                          weekday_Mon +
+                          weekday_Tue,
+                        np_paid_search)
+
+summary(paid_search_model)
+```
+
+```{r}
+
+paid_search_table <- star_elasticity_tidy(paid_search_model) %>%
+  rename(Coefficient = Elasticity)
+
+paid_search_table$Variable <- c("(Intercept)",
+                                "Log Adstock Xmas Cold Mail Volume",
+                                "Log Facebook Programmatic Spent",
+                                "Log Active Subscriber Pageviews",
+                                "Log Earned Index",
+                                # "Log Programmatic Spend",
+                                "Adstock Business Posts",
+                                "Adstock Crossword Posts",
+                                "Adstock Culture Posts",
+                                "Adstock Humor Posts",
+                                "Adstock Magizine Posts",
+                                "Adstock News Posts",
+                                "Adstock Sporting Scene Posts",
+                                "Adstock Tech Posts",
+                                "Adstock Video Posts",
+                                "Monday",
+                                "Tuesday")
+
+paid_search_table_trunc <- paid_search_table[1:7, ]
+paid_search_table_trunc <- rbind(paid_search_table_trunc, c("Posts by Type", "Varying", "< ."))
+paid_search_table_trunc <- rbind(paid_search_table_trunc, c("Weekday Controls", "Varying", "< *"))
+knitr::kable(paid_search_table_trunc, caption = "Paid search model specifications")
+```
+\newpage
+
+### Contribution Analysis
+
+Contribution will be assigned using the original stimulus and response (without log transformation). The unscaled contribution for a particular stimulus is defined as the following
+
+* The difference between the models prediction for the response (non-subscriber pageviews in this case) when including the stimulus, and prediction for the response after removing the stimulus. 
+
+Scaling will performed such that the sum across all stimulus is equal to the response value. This can then be rescaled for proportional contribution.
+
+```{r Adstock}
+
+# Create contributions table
+contributions <- log_contribution_table(paid_search_model)
+
+# Add date column
+contributions$snapshot_date <- np_paid_search$snapshot_date
+
+# Add together publish mix
+contributions_grouped <- contributions %>% 
+  mutate(`Editorial Posts` = adstock_posts_by_day_humor +
+           adstock_posts_by_day_video + 
+           adstock_posts_by_day_magazine +
+           adstock_posts_by_day_business +
+           adstock_posts_by_day_news +
+           adstock_posts_by_day_culture +
+           # adstock_posts_by_day_sporting_scene +
+           adstock_posts_by_day_tech,
+         `Earned Media` = `lg(earned_index)`,
+         `Non-Stimulus` = intercept + 
+           weekday_Mon + 
+           weekday_Tue
+  ) %>% 
+  select(snapshot_date,
+         `Editorial Posts`,
+         `Earned Media`,
+         `lg(adstock_xmas_cold_mail_volume)`,
+         `lg(facebook_and_prog)`,
+         `lg(ga_sub_status_active_pageviews)`,
+         # `lg(programmatic_campaigns_spend)`,
+         `Non-Stimulus`) %>% 
+  rename(
+    `Xmas Cold Mail` = `lg(adstock_xmas_cold_mail_volume)`,
+    `Facebook and Programmatic` = `lg(facebook_and_prog)`,
+    `Subscriber Pageviews` = `lg(ga_sub_status_active_pageviews)`,
+    # `Programmatic Spend`= `lg(programmatic_campaigns_spend)`,
+  )
+
+
+contributions_grouped_long <- contributions_grouped %>% 
+  pivot_longer(cols = -snapshot_date, names_to = "variable", values_to = "contribution")
+
+
+contributions_grouped_mean <- contributions_grouped %>% 
+  select(-snapshot_date) %>% 
+  colMeans() %>% 
+  sort(decreasing = TRUE)
+
+# This will be used to propagate contribution to second stage models
+contributions_grouped_prop <- contributions_grouped_mean / sum(contributions_grouped_mean)
+
+contribution_bars(contributions_grouped_mean)
+```
+
+
+```{r}
+paid_search_cont_table <- data.frame(
+  mean_contributions = contributions_grouped_mean,
+  proportional_contributions = contributions_grouped_prop
+)
+```
+# Traffic
+```{r non-Subscriber Pageviews, include=FALSE}
+### Model
+
+np_traffic <- national_panel_trunc
+# 
+# gift_params <- optimize_delayed_geom_adstock(np_traffic, lg(np_traffic$gift_xmas_cold_mail_volume)
+#                                              , upper_span = 0.95, upper_rate = 0.95)
+
+acq_email_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$acq_email_multi_sends_nyr + np_traffic$acq_email_multi_sends_combined) ,
+                                          lg(np_traffic$ga_sub_status_not_active_pageviews), lower_rate = 0.45, upper_rate = 0.7)
+books_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_books) ,lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+business_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_business) ,lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+
+cartoons_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_cartoons) ,lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+
+crossword_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_crossword) ,lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+
+culture_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_culture) ,lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+humor_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_humor) ,lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+magazine_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_magazine),lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+news_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_news),lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+podcast_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_podcast),lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+recommends_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_recommends),
+                                           lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+science_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_science),lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+
+sporting_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_sporting_scene),lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+
+tech_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_tech),lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+
+video_params <- optimize_geom_adstock(np_traffic,lg(np_traffic$posts_by_day_video),lg(np_traffic$ga_sub_status_not_active_pageviews), upper_rate = 0.8)
+```
+
+```{r}
+np_traffic <- np_traffic %>% 
+  mutate(
+    adstock_xmas_cold_mail_volume = delayed_geom_adstock(gift_xmas_cold_mail_volume, gift_params["span"], 21, gift_params["rate"]),
+    adstock_dm_promo_hist_ct = delayed_geom_adstock(pbworx_dm_promo_hist_prom_ct, 0.97, 12, 0.88),
+    adstock_dm_external_ct = delayed_geom_adstock(pbworx_external_names_only_prom_ct, 0.97, 12, 0.88),
+    adstock_acq_email_sent_total = geom_adstock(acq_email_multi_sends_nyr + acq_email_multi_sends_combined, acq_email_params["rate"]),
+    adstock_posts_by_day_books = geom_adstock(posts_by_day_books, books_params["rate"]),
+    adstock_posts_by_day_business = geom_adstock(posts_by_day_business, business_params["rate"]),
+    adstock_posts_by_day_cartoons = geom_adstock(posts_by_day_cartoons, cartoons_params["rate"]),
+    adstock_posts_by_day_crossword = geom_adstock(posts_by_day_crossword, crossword_params["rate"]),
+    adstock_posts_by_day_culture = geom_adstock(posts_by_day_culture, culture_params["rate"]),
+    adstock_posts_by_day_humor = geom_adstock(posts_by_day_humor, humor_params["rate"]),
+    adstock_posts_by_day_magazine = geom_adstock(posts_by_day_magazine, magazine_params["rate"]),
+    adstock_posts_by_day_news = geom_adstock(posts_by_day_news, news_params["rate"]),
+    adstock_posts_by_day_podcast = geom_adstock(posts_by_day_podcast, podcast_params["rate"]),
+    adstock_posts_by_day_recommends = geom_adstock(posts_by_day_recommends, recommends_params["rate"]),
+    adstock_posts_by_day_science = geom_adstock(posts_by_day_science, science_params["rate"]),
+    adstock_posts_by_day_sporting_scene = geom_adstock(posts_by_day_sporting_scene, sporting_params["rate"]),
+    adstock_posts_by_day_tech = geom_adstock(posts_by_day_tech, tech_params["rate"]),
+    adstock_posts_by_day_video = geom_adstock(posts_by_day_video, video_params["rate"])
+  )
+
+na_ga_model <- lm(lg(ga_sub_status_not_active_pageviews) ~ 
+                    lg(adstock_dm_promo_hist_ct) +
+                    lg(facebook_and_prog) +
+                    lg(newsletter_unique_opens) +
+                    lg(smooth_paid_search_cost) +
+                    lg(earned_index) +
+                    lg(earned_the_new_yorker) +
+                    # lg(programmatic_campaigns_spend)+
+                    adstock_posts_by_day_cartoons +
+                    adstock_posts_by_day_humor +
+                    adstock_posts_by_day_magazine +
+                    adstock_posts_by_day_news +
+                    adstock_posts_by_day_recommends +
+                    adstock_posts_by_day_sporting_scene +
+                    adstock_posts_by_day_tech +
+                    weekday_Mon +
+                    weekday_Tue +
+                    timekey,
+                  np_traffic)
+
+summary(na_ga_model)
+```
+
+
+```{r}
+na_ga_model_table <- star_elasticity_tidy(na_ga_model) %>% 
+  rename(Coefficient = Elasticity)
+na_ga_model_table$Variable <- c(
+  "(Intercept)",
+  "Log Adstock DM Promo History",
+  "Log Facebook and Programmatic",
+  "Log Adstock Newsletter Unique Opens",
+  "Log Paid Search Cost",
+  "Log Earned Index",
+  "Log Earned The New Yorker",
+  # "Log Programmatic Spend",
+  "Adstock Cartoon Posts",
+  "Adstock Humor Posts",
+  "Adstock Magazine Posts",
+  "Adstock News Posts",
+  "Adstock Recommends Posts",
+  "Adstock Sporting Scene Posts",
+  "Adstock Tech Posts",
+  "Monday",
+  "Tuesday",
+  "Time key"
+)
+
+na_ga_model_table_trunc <- na_ga_model_table[1:9,]
+
+na_ga_model_table_trunc <- rbind(na_ga_model_table_trunc, c("Posts by Type", "Varying", "< ."))
+na_ga_model_table_trunc <- rbind(na_ga_model_table_trunc, c("Weekday/Time Controls", "Varying", "< **"))
+knitr::kable(na_ga_model_table_trunc)
+
+```
+
+```{r natl panel trunc}
+national_panel_trunc <- national_panel_trunc %>%  mutate(
+  lg_predicted_sub_status_not_active_pageviews = predict(na_ga_model, np_traffic)
+)
+# Create traffic_contributions table
+traffic_contributions <- log_contribution_table(na_ga_model)
+
+# Add date column
+traffic_contributions$snapshot_date <- np_traffic$snapshot_date
+
+# Add together publish mix
+traffic_contributions_grouped <- traffic_contributions %>% 
+  mutate(`Editorial Posts` = adstock_posts_by_day_humor +
+           adstock_posts_by_day_cartoons + 
+           adstock_posts_by_day_magazine +
+           adstock_posts_by_day_news +
+           adstock_posts_by_day_recommends + 
+           # adstock_posts_by_day_sporting_scene +
+           adstock_posts_by_day_tech,
+         `News Index` = `lg(earned_index)`,
+         `Earned The New Yorker` = `lg(earned_the_new_yorker)`,
+         `Non-Stimulus` = intercept + 
+           weekday_Mon + 
+           weekday_Tue
+  ) %>% 
+  select(snapshot_date,
+         `Editorial Posts`,
+         `lg(adstock_dm_promo_hist_ct)`,
+         `lg(facebook_and_prog)`,
+         `lg(newsletter_unique_opens)`,
+         `lg(smooth_paid_search_cost)`,
+         `Earned The New Yorker`,
+         `News Index`,
+         `Non-Stimulus`) %>% 
+  rename(
+    `DM Promotions` = `lg(adstock_dm_promo_hist_ct)`,
+    `Facebook and Programmatic` = `lg(facebook_and_prog)`,
+    `Newsletters` = `lg(newsletter_unique_opens)`,
+    `Paid Search` =`lg(smooth_paid_search_cost)`
+  )
+
+
+traffic_contributions_grouped_long <- traffic_contributions_grouped %>% 
+  pivot_longer(cols = -snapshot_date, names_to = "variable", values_to = "contribution")
+
+
+traffic_contributions_grouped_mean <- traffic_contributions_grouped %>% 
+  select(-snapshot_date) %>% 
+  colMeans() %>% 
+  sort(decreasing = TRUE)
+
+# This will be used to propagate contribution to second stage models
+traffic_contributions_grouped_prop <- traffic_contributions_grouped_mean / sum(traffic_contributions_grouped_mean)
+
+
+traffic_cont_table <- data.frame(
+  mean_contributions = traffic_contributions_grouped_mean,
+  proportional_contributions = traffic_contributions_grouped_prop
+)
+```
+
+```{r include=FALSE}
+start_del <- c(
+  b0 = 3,
+  b1 = 0.03, span1 = 0.95, rate1 = 0.88
+)
+
+lower_del <- c(
+  b0 = 1e-6,
+  b1 = 1e-6, span1 = 1e-6, rate1 = 0.4
+)
+
+upper_del <- c(
+  b0 = Inf,
+  b1 = Inf, span1 = 0.99, rate1 = 0.99
+)
+
+# xmas_gift_lm <- nlsLM(lg(dash_net_subs) ~
+#                         b0 +
+#                         b1 * lg(delayed_geom_adstock(gift_xmas_cold_mail_volume, span1, 21, rate1)),
+#                       data = national_panel_trunc,
+#                       start = start_del,
+#                       lower = lower_del,
+#                       upper = upper_del,
+#                       model = TRUE,
+#                       # trace = TRUE
+# )
+
+
+start_geom <- c(
+  b0 = 0.5,
+  b1 = 0.02, rate1 = 0.4
+)
+
+lower_geom <- c(
+  b0 = 1e-6,
+  b1 = 1e-6, rate1 = 1e-6
+)
+
+upper_geom <- c(
+  b0 = Inf,
+  b1 = Inf, rate1 = 0.99
+)
+
+# prog_lm <- nlsLM(lg(dash_net_subs) ~
+#                    b0 +
+#                    b1 * lg(geom_adstock(programmatic_campaigns_spend, rate1)),
+#                  data = national_panel_trunc,
+#                  start = start_geom,
+#                  lower = lower_geom,
+#                  upper = upper_geom,
+#                  model = TRUE,
+#                  #trace = TRUE
+# ) per andy, there really isn't an adstock with programmatic
+
+acq_email_lm <- nlsLM(lg(dash_net_subs) ~
+                        b0 +
+                        b1 * lg(geom_adstock(acq_email_sent_nyr, rate1)),
+                      data = national_panel_trunc,
+                      start = start_geom,
+                      lower = lower_geom,
+                      upper = upper_geom,
+                      model = TRUE,
+                      #trace = TRUE
+)
+
+acq_email_combined_lm <- nlsLM(lg(dash_net_subs) ~
+                                 b0 +
+                                 b1 * lg(geom_adstock(acq_email_sent_combined, rate1)),
+                               data = national_panel_trunc,
+                               start = start_geom,
+                               lower = lower_geom,
+                               upper = upper_geom,
+                               model = TRUE,
+                               #trace = TRUE
+)
+
+
+
+acq_email_multi_lm <- nlsLM(lg(dash_net_subs) ~
+                              b0 +
+                              b1 * lg(geom_adstock(acq_email_multi_sends_nyr, rate1)),
+                            data = national_panel_trunc,
+                            start = start_geom,
+                            lower = lower_geom,
+                            upper = upper_geom,
+                            model = TRUE,
+                            #trace = TRUE
+)
+
+acq_email_multi_combined_lm <- nlsLM(lg(dash_net_subs) ~
+                                       b0 +
+                                       b1 * lg(geom_adstock(acq_email_multi_sends_combined, rate1)),
+                                     data = national_panel_trunc,
+                                     start = start_geom,
+                                     lower = lower_geom,
+                                     upper = upper_geom,
+                                     model = TRUE,
+                                     #trace = TRUE
+)
+
+
+newsletter_sends_lm <- nlsLM(lg(dash_net_subs) ~
+                               b0 +
+                               b1 * lg(geom_adstock(newsletter_sends, rate1)),
+                             data = national_panel_trunc,
+                             start = start_geom,
+                             # lower = lower_geom,
+                             # upper = upper_geom,
+                             model = TRUE,
+                             # trace = TRUE
+)
+
+newsletter_opens_lm <- nlsLM(lg(dash_net_subs) ~
+                               b0 +
+                               b1 * lg(geom_adstock(newsletter_unique_opens, rate1)),
+                             data = national_panel_trunc,
+                             # start = start_geom,
+                             # lower = lower_geom,
+                             upper = upper_geom,
+                             model = TRUE,
+                             # trace = TRUE
+)
+
+# notable_events_lm <- nlsLM(lg(dash_net_subs) ~
+#                              b0 +
+#                              b1 * lg(geom_adstock(notable_events_total_visits, rate1)),
+#                            data = national_panel_trunc,
+#                            start = start_geom,
+#                            lower = lower_geom,
+#                            upper = upper_geom,
+#                            model = TRUE,
+#                            #trace = TRUE
+# )
+```
+
+
+```{r DASH Model}
+np_dash <- national_panel_trunc %>% 
+  mutate(
+    # adstock_xmas_cold_mail_volume = delayed_geom_adstock(gift_xmas_cold_mail_volume, coef(xmas_gift_lm)["span1"], 21, coef(xmas_gift_lm)["rate1"]),
+    adstock_acq_email_sent = geom_adstock(acq_email_sent_nyr, coef(acq_email_lm)["rate1"]),
+    adstock_acq_email_sent_combined = geom_adstock(acq_email_sent_combined, coef(acq_email_lm)["rate1"]),
+    adstock_acq_email_multi_sent = geom_adstock(acq_email_multi_sends_nyr, coef(acq_email_multi_lm)["rate1"]),
+    adstock_acq_email_multi_sent_combined = geom_adstock(acq_email_multi_sends_combined, coef(acq_email_multi_lm)["rate1"]),
+    adstock_newsletter_sends = geom_adstock(newsletter_sends, coef(newsletter_sends_lm)["rate1"]),
+    adstock_newsletter_opens = geom_adstock(newsletter_unique_opens, coef(newsletter_opens_lm)["rate1"]),
+    # adstock_notable_events = geom_adstock(notable_events_total_visits, coef(notable_events_lm)["rate1"]),
+    adstock_dm_promo_hist_ct = delayed_geom_adstock(pbworx_dm_promo_hist_prom_ct, 0.97, 12, 0.88),
+    adstock_acq_email_sent_total = adstock_acq_email_sent + adstock_acq_email_sent_combined,
+    # adstock_prog_spend = geom_adstock(programmatic_campaigns_spend, coef(prog_lm)["rate1"]),
+  )
+
+dash_model <- lm(lg(dash_net_subs) ~ 
+                   -1 +
+                   lg(adstock_acq_email_sent_total) +
+                   lg(facebook_and_prog) +
+                   lg_predicted_sub_status_not_active_pageviews 
+                   # lg(programmatic_campaigns_spend)
+                   # lg(prog_retargeting_amount_spent)+
+                   # lg(prog_prospecting_amount_spent)+
+                   # +sale_on_site
+                   # +covid 
+                   # election
+                 ,np_dash)
+
+summary(dash_model)
+```
+\newpage
+##DASH Model
+```{r}
+dash_model_table <- star_elasticity_tidy(dash_model)
+dash_model_table$Variable <- c(
+  "Acquisition Emails"
+  ,"Facebook and Programmatic Spend"
+  ,"Predicted Non-Subscriber Pageviews"
+  # ,"Programmatic Spend"
+  # "Programmatic Retargeting",
+  # "Programmatic Prospecting",
+  # ,"Sales Days"
+  # ,"Covid"
+  # ,"Election"
+)
+
+```
+
+```{r contributions}
+# Create contributions table
+contributions <- log_contribution_table(dash_model, intercept = FALSE)
+
+# Add date column
+contributions$snapshot_date <- np_dash$snapshot_date
+
+# Add together publish mix
+contributions_grouped <- contributions %>% 
+  rename(
+    `Acquisition Emails` = `lg(adstock_acq_email_sent_total)`,
+    `Predicted Non-Subscriber Pageviews` = `lg_predicted_sub_status_not_active_pageviews`,
+    `Facebook and Programmatic` = `lg(facebook_and_prog)`,
+    # `Programmatic Prospecting` = `lg(prog_prospecting_amount_spent)`,
+    # `Programmatic Retargeting` = `lg(prog_retargeting_amount_spent)`,
+    # `Programmatic Spend` = `lg(programmatic_campaigns_spend)`
+    # ,`On Sale Days` = `sale_on_site`
+  )
+
+contributions_grouped_long <- contributions_grouped %>% 
+  pivot_longer(cols = -snapshot_date, names_to = "variable", values_to = "contribution")
+
+contributions_grouped_mean <- contributions_grouped %>% 
+  select(-snapshot_date) %>% 
+  colMeans() %>% 
+  sort(decreasing = TRUE)
+
+o_contributions_mean <- contributions_grouped_mean # will be used in total contribution calculation
+
+contributions_grouped_prop <- contributions_grouped_mean / sum(contributions_grouped_mean)
+
+# Get additional contributions from first stage
+traffic_breakdown <- traffic_contributions_grouped_prop * contributions_grouped_mean["Predicted Non-Subscriber Pageviews"]
+names.keep <- names(contributions_grouped_mean)[!(names(contributions_grouped_mean)) %in% c("Predicted Non-Subscriber Pageviews")]
+contributions_mean_granular <- contributions_grouped_mean[names.keep]
+
+# Add common values together
+contributions_mean_granular["Facebook and Programmatic"] = contributions_mean_granular["Facebook and Programmatic"] + traffic_breakdown["Facebook and Programmatic"]
+names.keep <- names(traffic_breakdown)[!(names(traffic_breakdown)) %in% c("Facebook and Programmatic")]
+traffic_breakdown <- traffic_breakdown[names.keep]
+
+# Add rest of contributions from traffic
+contributions_mean_granular <- c(contributions_mean_granular, traffic_breakdown)
+contribution_bars(contributions_mean_granular)
+
+o_contributions_mean_granular <- contributions_mean_granular
+
+contributions_prop <- sort(contributions_mean_granular / sum(contributions_mean_granular), decreasing = TRUE)
+
+online_cont_table <- data.frame(
+  online_cont_table = sort(o_contributions_mean_granular, decreasing = TRUE),
+  proportional_contributions = sort(contributions_prop, decreasing = TRUE)
+)
+```
+
+\newpage
+# Contributions
+```{r plots}
+
+p1<- ggplot(national_panel_trunc, aes(snapshot_date, lg(facebook_amount_spent))) +
+  geom_line() +
+  scale_x_date(minor_breaks = date_breaks("months"), labels = date_format("%Y-%m")) +
+  theme(axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9))) +
+  labs(x = "",
+       y = "",
+       subtitle = "FB Spend (LOG)")
+
+p2<-ggplot(national_panel_trunc, aes(snapshot_date,dash_net_subs )) +
+  geom_line() +
+  scale_x_date(minor_breaks = date_breaks("months"), labels = date_format("%Y-%m")) +
+  theme(axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9))) +
+  labs(x = "",
+       y = "",
+       subtitle = "Subs")
+
+p3<-ggplot(national_panel_trunc, aes(snapshot_date,lg(programmatic_campaigns_spend))) +
+  geom_line() +
+  scale_x_date(minor_breaks = date_breaks("months"), labels = date_format("%Y-%m")) +
+  theme(axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9))) +
+  labs(x = "",
+       y = "",
+       subtitle = "Programmatic Spend (Log)")
+
+p4<-ggplot(national_panel_trunc, aes(snapshot_date,lg(smooth_paid_search_cost) )) +
+  geom_line() +
+  scale_x_date(minor_breaks = date_breaks("months"), labels = date_format("%Y-%m")) +
+  theme(axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9))) +
+  labs(x = "",
+       y = "",
+       subtitle = "paid search (log)")
+p5<-ggplot(np_dash, aes(snapshot_date,lg(adstock_acq_email_sent_total) )) +
+  geom_line() +
+  scale_x_date(minor_breaks = date_breaks("months"), labels = date_format("%Y-%m")) +
+  theme(axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9))) +
+  labs(x = "",
+       y = "",
+       subtitle = "Log NL Sends")
+
+p6<-ggplot(np_dash, aes(snapshot_date,sale_on_site)) +
+  geom_line() +
+  scale_x_date(minor_breaks = date_breaks("months"), labels = date_format("%Y-%m")) +
+  theme(axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9))) +
+  labs(x = "",
+       y = "",
+       subtitle = "On Sale")
+
+grid.arrange(p2, p1,p3,p4,p5,p6, ncol = 2, nrow = 3)
+```
+
+
+```{r final table, warning=FALSE}
+knitr::kable(online_cont_table)
+```
